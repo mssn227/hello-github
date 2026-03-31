@@ -1,42 +1,66 @@
-name: CI - Pipeline Informatif
+name: CI Docker Build & Push
 
 on:
   push:
     branches:
-      - lab
+      - lab-trivy
 
 jobs:
-  integration-continue:
-    name: Démonstration CI
+  docker:
     runs-on: ubuntu-latest
 
+    #environment: dev
+
+    env:
+      IMAGE_NAME: ci-html-demo
+      IMAGE_TAG: latest
+      DOCKER_REGISTRY: bencheikh2006
+
     steps:
-      - name: Étape 1 - Initialisation
+      - name: Récupération du code
+        uses: actions/checkout@v4
+      
+      - name: Test Varibales
         run: |
-          echo "Démarrage du pipeline d’intégration continue"
-          echo "Le code vient d’être poussé sur GitHub"
+          echo "Varibale MYVAR  ${{ vars.MYVAR }} "
+          echo "Varibale IMAGE_NAME $IMAGE_NAME"
+          echo "Varibale DOCKER_REGISTRY  $DOCKER_REGISTRY "
 
-      - name: Étape 2 - Récupération du code
-        run: |
-          echo "Récupération du code source"
-          echo "Le dépôt est prêt pour le traitement"
 
-      - name: Étape 3 - Build
+      - name: Connexion à Docker Hub
         run: |
-          echo "Phase de build"
-          echo "Compilation ou construction de l’application"
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-      - name: Étape 4 - Tests
+      - name: Build de l’image Docker
         run: |
-          echo "Phase de tests"
-          echo "Exécution des tests unitaires"
-          echo "Vérification de la qualité du code"
+          docker build -t $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG .
+        
+      - name: Test de l’image Docker
+        run: |
+          docker image ls $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG 
 
-      - name: Étape 5 - Packaging
+      - name: Push de l’image Docker
         run: |
-          echo "Phase de packaging"
-          echo "Création d’un artefact ou d’une image Docker"
+          docker push $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
 
-      - name: Étape 6 - Fin du pipeline
-        run: |
-          echo "Le pipeline CI s’est exécuté avec succès"
+        ## Trivy Vulnerability Scanner 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          scanners: 'vuln,secret,config' 
+          #template: '@/contrib/html.tpl'  # Utilise le template HTML intégré à Trivy
+          #output: 'trivy-report.html'
+          #severity: CRITICAL,HIGH, MEDIUM
+          #exit-code: 1
+          vuln-type: os,library
+          #ignore-unfixed: true
+
+      ## Upload the Trivy HTML report as an artifact
+      # - name: Upload Trivy HTML Report
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: trivy-security-report
+      #     path: trivy-report.html
+      #     retention-days: 14  # Conserve le rapport pendant 2 semaines
